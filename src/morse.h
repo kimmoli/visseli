@@ -31,7 +31,7 @@ public:
 
 private slots:
     void vuMeterValueUpdate(float value);
-    void audioAcquire();
+    void audioAcquired();
 
 signals:
     void versionChanged();
@@ -42,6 +42,7 @@ private:
     QMultimediaAudioRecorder *mmar;
     Generator *gen;
     bool _initialised;
+    bool _playing;
     int _vuValue;
     QAudioFormat _format;
     QAudioOutput *_audioOutput;

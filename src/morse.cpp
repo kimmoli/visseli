@@ -3,6 +3,7 @@
 */
 
 #include "morse.h"
+ #include <QAudioDeviceInfo>
 
 Morse::Morse(QObject *parent) :
     QObject(parent),
@@ -17,7 +18,9 @@ Morse::Morse(QObject *parent) :
     emit vuValueChanged();
 
     QObject::connect(&_audio_resource, SIGNAL(acquiredChanged()),
-                     this, SLOT(audioAcquire()));
+                     this, SLOT(audioAcquired()));
+
+    _playing = false;
 }
 
 Morse::~Morse()
@@ -71,38 +74,74 @@ void Morse::vuMeterValueUpdate(float value)
 
 void Morse::beep()
 {
-    _audio_resource.acquire();
-}
-
-void Morse::audioAcquire()
-{
-
-     if (!_audio_resource.isAcquired())
-         return;
-
-    _format.setSampleRate(44100);
-    _format.setChannelCount(1);
-    _format.setSampleSize(16);
-    _format.setCodec("audio/pcm");
-    _format.setByteOrder(QAudioFormat::LittleEndian);
-    _format.setSampleType(QAudioFormat::SignedInt);
-
-    if (!gen)
+    if (!_playing)
     {
-        delete gen;
-        gen = 0;
+        qDebug() << "acquiring audioresource";
+        _audio_resource.acquire();
     }
-
-    gen = new Generator(_format, 1000000, 600, this);
-
-    if (!_audioOutput)
+    else
     {
+        qDebug() << "releasing audioresource";
+        _audio_resource.release();
+
+        qDebug() << "stopping";
+        _audioOutput->stop();
+        gen->stop();
         delete _audioOutput;
         _audioOutput = 0;
+        delete gen;
+        gen = 0;
+
+        _playing = false;
     }
+}
 
-    _audioOutput = new QAudioOutput(QAudioDeviceInfo::defaultOutputDevice(), _format, this);
-    gen->start();
+void Morse::audioAcquired()
+{
+    qDebug() << "audioAcquiredChanged" << _audio_resource.isAcquired();
 
-    _audioOutput->start(gen);
+    if (_audio_resource.isAcquired() && !_playing)
+    {
+        qDebug() << "playing";
+
+        _format.setSampleRate(44100);
+        _format.setChannelCount(1);
+        _format.setSampleSize(16);
+        _format.setCodec("audio/pcm");
+        _format.setByteOrder(QAudioFormat::LittleEndian);
+        _format.setSampleType(QAudioFormat::SignedInt);
+
+        if (QAudioDeviceInfo::availableDevices(QAudio::AudioOutput).isEmpty())
+        {
+            qWarning() << "no audio output devices";
+            return;
+        }
+
+        if (!QAudioDeviceInfo::defaultOutputDevice().isFormatSupported(_format))
+        {
+            qWarning() << "raw audio format not supported by backend, cannot play audio.";
+            return;
+        }
+
+        if (!gen)
+        {
+            delete gen;
+            gen = 0;
+        }
+
+        gen = new Generator(_format, 1000, 600, this);
+
+        if (!_audioOutput)
+        {
+            delete _audioOutput;
+            _audioOutput = 0;
+        }
+
+        _audioOutput = new QAudioOutput(QAudioDeviceInfo::defaultOutputDevice(), _format, this);
+        gen->start();
+
+        _audioOutput->start(gen);
+
+        _playing = true;
+    }
 }
